@@ -117,7 +117,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
           screenId = data['screen_id']?.toString() ?? '';
           companyId = data['company_id']?.toString() ?? '';
           orientation = data['orientation']?.toString() ?? 'landscape';
-          syncInterval = data['sync_interval']?.toString() ?? '10';
+          syncInterval = data['sync_interval']?.toString() ?? '3';
         }
       }
     } catch (e) {
@@ -135,7 +135,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
         screenId: screenId,
         companyId: companyId,
         orientation: orientation,
-        syncInterval: int.tryParse(syncInterval) ?? 10,
+        syncInterval: int.tryParse(syncInterval) ?? 3,
       );
 
       _navigateToDashboard();
@@ -157,13 +157,13 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
       final sId = prefs.getString('screen_id') ?? '5';
       final cId = prefs.getString('company_id') ?? '1';
       final orient = prefs.getString('orientation') ?? 'landscape';
-      final syncInt = prefs.getString('sync_interval') ?? '10';
+      final syncInt = prefs.getString('sync_interval') ?? '3';
       
       await ref.read(activationProvider.notifier).activateDevice(
         screenId: sId,
         companyId: cId,
         orientation: orient,
-        syncInterval: int.tryParse(syncInt) ?? 10,
+        syncInterval: int.tryParse(syncInt) ?? 3,
       );
       _navigateToDashboard();
     } else {

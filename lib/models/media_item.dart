@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 class MediaItem {
   final int id;
   final String url;
@@ -83,8 +86,21 @@ class MediaItem {
     };
   }
 
-  /// Determines if this media item should be displayed right now based on its schedule.
-  bool isValidNow(DateTime now) {
+  /// Checks if the media file is downloaded and cached locally on disk.
+  bool isLocallyAvailable() {
+    if (kIsWeb) return true;
+    if (localPath == null || localPath!.isEmpty) return false;
+    final file = File(localPath!);
+    return file.existsSync() && file.lengthSync() > 0;
+  }
+
+  /// Determines if this media item should be displayed right now based on its schedule and connectivity.
+  bool isValidNow(DateTime now, {bool isOnline = true}) {
+    // If offline, the item must be locally cached to be displayed
+    if (!isOnline && !isLocallyAvailable()) {
+      return false;
+    }
+
     final sched = schedule;
     if (sched == null) return true; // No schedule implies persistent fallback execution
 

@@ -24,6 +24,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   Timer? _imageTimer;
+  Timer? _validityTimer;
   int? _scheduledItemId;
 
   // Seamless fade transition states
@@ -39,6 +40,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     SyncService.instance.start(ref);
     HeartbeatService.instance.start(ref);
 
+    _startValidityTimer();
+
     // Lock initial orientation after the first frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -47,9 +50,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
   }
 
+  void _startValidityTimer() {
+    _validityTimer?.cancel();
+    _validityTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      final playlistState = ref.read(playlistProvider);
+      if (playlistState.items.isEmpty) return;
+
+      final now = DateTime.now();
+      final currentItem = playlistState.items[playlistState.currentIndex];
+
+      // Rebuild if the current item has expired/is no longer valid
+      if (!currentItem.isValidNow(now, isOnline: playlistState.isOnline)) {
+        setState(() {});
+      }
+    });
+  }
+
   @override
   void dispose() {
     _imageTimer?.cancel();
+    _validityTimer?.cancel();
     SyncService.instance.stop();
     HeartbeatService.instance.stop();
     // Reset orientations when navigating back to setup/auth screen
@@ -148,16 +169,40 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     Widget playerBody;
 
-    if (playlistState.items.isEmpty) {
+    final now = DateTime.now();
+    final hasValidItems = playlistState.items.any((item) => item.isValidNow(now, isOnline: playlistState.isOnline));
+
+    if (playlistState.items.isEmpty || !hasValidItems) {
       if (!playlistState.hasInitialized || playlistState.isLoading) {
         playerBody = _buildPremiumLoadingView();
       } else {
         playerBody = _buildEmptyPlaceholder();
       }
     } else {
-      final currentItem = playlistState.items[playlistState.currentIndex];
+      var currentItem = playlistState.items[playlistState.currentIndex];
 
-      if (_lastProcessedItemId != currentItem.id) {
+      if (!currentItem.isValidNow(now, isOnline: playlistState.isOnline)) {
+        // Find the next valid item index
+        int nextIdx = (playlistState.currentIndex + 1) % playlistState.items.length;
+        while (nextIdx != playlistState.currentIndex) {
+          if (playlistState.items[nextIdx].isValidNow(now, isOnline: playlistState.isOnline)) {
+            break;
+          }
+          nextIdx = (nextIdx + 1) % playlistState.items.length;
+        }
+
+        final targetIndex = nextIdx;
+        currentItem = playlistState.items[targetIndex];
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ref.read(playlistProvider.notifier).setCurrentIndex(targetIndex);
+          }
+        });
+      }
+
+      final isImageLocalPathChange = currentItem.type == 'image' && _currItem?.localPath != currentItem.localPath;
+      if (_lastProcessedItemId != currentItem.id || isImageLocalPathChange) {
         _prevItem = _currItem;
         _currItem = currentItem;
         _lastProcessedItemId = currentItem.id;
@@ -172,7 +217,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       if (_prevItem != null) {
         stackChildren.add(
           Positioned.fill(
-            key: ValueKey('media_${_prevItem!.id}'),
+            key: ValueKey('media_${_prevItem!.id}_${_prevItem!.localPath}'),
             child: AnimatedOpacity(
               opacity: prevOpacity,
               duration: const Duration(milliseconds: 800),
@@ -186,7 +231,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       if (_currItem != null) {
         stackChildren.add(
           Positioned.fill(
-            key: ValueKey('media_${_currItem!.id}'),
+            key: ValueKey('media_${_currItem!.id}_${_currItem!.localPath}'),
             child: AnimatedOpacity(
               opacity: isOpacityOne ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 800),
@@ -247,6 +292,53 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               ),
             ),
           ),
+          // Caching progress indicator card
+          if (playlistState.downloadProgress > 0.0 && playlistState.downloadProgress < 1.0)
+            Positioned(
+              bottom: 24,
+              right: 24,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.12)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        value: playlistState.downloadProgress,
+                        strokeWidth: 2.5,
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                        backgroundColor: Colors.white.withOpacity(0.1),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Caching media... ${(playlistState.downloadProgress * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Roboto',
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -536,9 +628,10 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
 
   void _updateLoopingState() {
     if (_controller == null || !_initialized) return;
-    final items = ref.read(playlistProvider).items;
+    final playlistState = ref.read(playlistProvider);
+    final items = playlistState.items;
     final now = DateTime.now();
-    final validCount = items.where((item) => item.isValidNow(now)).length;
+    final validCount = items.where((item) => item.isValidNow(now, isOnline: playlistState.isOnline)).length;
     final shouldLoop = validCount <= 1;
     if (_controller!.value.isLooping != shouldLoop) {
       _controller!.setLooping(shouldLoop);
@@ -578,10 +671,26 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
             File(widget.item.localPath!).existsSync() &&
             File(widget.item.localPath!).lengthSync() > 0;
 
-        if (!fileExists) {
+        final playlistState = ref.read(playlistProvider);
+
+        if (!fileExists && !kIsWeb) {
+          if (!playlistState.isOnline) {
+            if (mounted) {
+              setState(() {
+                _hasError = true;
+              });
+            }
+            return;
+          }
+
+          print('[VideoPlayerWidget] File not cached yet. Streaming from network: ${widget.item.url}');
           _controller = VideoPlayerController.networkUrl(Uri.parse(widget.item.url));
         } else {
-          _controller = VideoPlayerController.file(File(widget.item.localPath!));
+          if (kIsWeb) {
+            _controller = VideoPlayerController.networkUrl(Uri.parse(widget.item.url));
+          } else {
+            _controller = VideoPlayerController.file(File(widget.item.localPath!));
+          }
         }
 
         _controller!.addListener(_videoListener);
@@ -657,7 +766,9 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
       );
     }
 
-    if (!_initialized) return const SizedBox.shrink();
+    if (!_initialized) {
+      return const SizedBox.shrink();
+    }
 
     // FittedBox correctly fills any rotated space while preserving aspect ratio
     return SizedBox.expand(

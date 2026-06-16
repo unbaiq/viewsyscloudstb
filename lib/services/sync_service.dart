@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -47,6 +48,12 @@ class SyncService {
     print('Sync check called. Activated: ${actState.isActivated}, Device Code: ${actState.deviceCode}, Screen ID: ${actState.screenId}');
     if (!actState.isActivated) return;
 
+    if (kIsWeb) {
+      // Bypass network sync in Web demo mode
+      ref.read(playlistProvider.notifier).setOnlineStatus(true);
+      return;
+    }
+
     _isSyncing = true;
     final screenId = actState.screenId;
 
@@ -64,6 +71,8 @@ class SyncService {
         syncUrl,
         headers: {'Accept': 'application/json'},
       );
+
+      ref.read(playlistProvider.notifier).setOnlineStatus(true);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -125,6 +134,7 @@ class SyncService {
       }
     } catch (e) {
       print('Sync connectivity failure: $e');
+      ref.read(playlistProvider.notifier).setOnlineStatus(false);
     } finally {
       _isSyncing = false;
       ref.read(playlistProvider.notifier).markInitialized();

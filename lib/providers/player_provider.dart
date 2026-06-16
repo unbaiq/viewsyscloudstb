@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:video_player/video_player.dart';
@@ -125,6 +126,7 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
   /// Refreshes the activation details from the server using the saved device/pairing code.
   Future<bool> refreshActivationDetails() async {
     if (state.deviceCode == '------' || state.deviceCode.isEmpty) return false;
+    if (kIsWeb) return true;
 
     try {
       final url = Uri.parse('https://viewsys.co.in/api/player/login');
@@ -230,6 +232,8 @@ class PlaylistState {
   final bool isLoading;
   final String? errorMessage;
   final bool hasInitialized;
+  final bool isOnline;
+  final double downloadProgress;
 
   PlaylistState({
     required this.items,
@@ -237,6 +241,8 @@ class PlaylistState {
     this.isLoading = false,
     this.errorMessage,
     this.hasInitialized = false,
+    this.isOnline = true,
+    this.downloadProgress = 0.0,
   });
 
   PlaylistState copyWith({
@@ -245,6 +251,8 @@ class PlaylistState {
     bool? isLoading,
     String? errorMessage,
     bool? hasInitialized,
+    bool? isOnline,
+    double? downloadProgress,
   }) {
     return PlaylistState(
       items: items ?? this.items,
@@ -252,13 +260,82 @@ class PlaylistState {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
       hasInitialized: hasInitialized ?? this.hasInitialized,
+      isOnline: isOnline ?? this.isOnline,
+      downloadProgress: downloadProgress ?? this.downloadProgress,
     );
   }
 }
 
 class PlaylistNotifier extends StateNotifier<PlaylistState> {
-  PlaylistNotifier() : super(PlaylistState(items: [], hasInitialized: false)) {
-    loadCachedPlaylist();
+  int _currentDownloadSession = 0;
+
+  PlaylistNotifier() : super(PlaylistState(items: [], hasInitialized: false, isOnline: true)) {
+    loadCachedPlaylist().then((_) {
+      if (kIsWeb && state.items.isEmpty) {
+        final now = DateTime.now();
+        final mockItems = [
+          MediaItem(
+            id: 991,
+            url: 'https://viewsys.co.in/assets/images/logo.png',
+            type: 'image',
+            duration: 10,
+            order: 1,
+            schedule: ScheduleConfig(
+              startDatetime: now.subtract(const Duration(minutes: 5)),
+              endDatetime: now.add(const Duration(seconds: 15)), // Expire in 15 seconds
+              type: 'broadcast',
+              priority: 1,
+            ),
+          ),
+          MediaItem(
+            id: 992,
+            url: 'https://viewsys.co.in/assets/images/logo.png',
+            type: 'image',
+            duration: 10,
+            order: 2,
+            schedule: ScheduleConfig(
+              startDatetime: now.subtract(const Duration(minutes: 5)),
+              endDatetime: now.subtract(const Duration(seconds: 5)), // Already expired
+              type: 'broadcast',
+              priority: 1,
+            ),
+          ),
+        ];
+        updatePlaylist(mockItems);
+      }
+    });
+    _checkInitialConnectivity();
+  }
+
+  Future<void> _checkInitialConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com').timeout(const Duration(seconds: 3));
+      if (!mounted) return;
+      final online = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      state = state.copyWith(isOnline: online);
+    } catch (_) {
+      if (!mounted) return;
+      state = state.copyWith(isOnline: false);
+    }
+  }
+
+  /// Sets whether the app is currently online or offline.
+  void setOnlineStatus(bool online) {
+    if (state.isOnline != online) {
+      state = state.copyWith(isOnline: online);
+      // Re-evaluate current index based on new connectivity status
+      final validIdx = _findFirstValidIndex(state.items);
+      state = state.copyWith(currentIndex: validIdx);
+      _preloadNextItem();
+    }
+  }
+
+  /// Programmatically sets the active playlist item index.
+  void setCurrentIndex(int index) {
+    if (index >= 0 && index < state.items.length) {
+      state = state.copyWith(currentIndex: index);
+      _preloadNextItem();
+    }
   }
 
   /// Load cached items from DB on startup
@@ -271,13 +348,20 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
         currentIndex: _findFirstValidIndex(items),
         isLoading: false,
         hasInitialized: items.isNotEmpty,
+        isOnline: state.isOnline,
+        downloadProgress: state.downloadProgress,
       );
 
       if (items.isNotEmpty) {
+        _logPlaylist(items);
         // Resolve orientations in the background and update state when done
         _resolveOrientations(items).then((resolved) {
           state = state.copyWith(items: resolved);
           _preloadNextItem();
+
+          // Verify and download any missing media files sequentially
+          _currentDownloadSession++;
+          _startBackgroundDownload(resolved, _currentDownloadSession);
         });
       }
     } catch (e) {
@@ -300,36 +384,147 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
   Future<void> updatePlaylist(List<MediaItem> newItems) async {
     state = state.copyWith(isLoading: true);
     try {
-      // 1. Download and cache media files locally in background in parallel
-      final List<MediaItem> cachedItems = await Future.wait(
-        newItems.map((item) async {
-          final localPath = await FileManager.instance.downloadFile(item.url, item.id, item.type);
-          return item.copyWith(localPath: localPath);
-        }),
-      );
+      // 1. Retrieve existing local cache mappings from current database items
+      final oldItems = await DatabaseHelper.instance.getPlaylist();
+      final Map<int, String?> localPathMap = {
+        for (var item in oldItems)
+          if (item.localPath != null && (kIsWeb || File(item.localPath!).existsSync()))
+            item.id: item.localPath
+      };
 
-      // 2. Save items to Database
-      await DatabaseHelper.instance.savePlaylist(cachedItems);
+      // Map the local cache paths back into our new media list
+      final List<MediaItem> itemsToUse = newItems.map((item) {
+        if (localPathMap.containsKey(item.id)) {
+          return item.copyWith(localPath: localPathMap[item.id]);
+        }
+        return item;
+      }).toList();
 
-      // 3. Clean up unreferenced files from local storage
-      await FileManager.instance.cleanUnusedFiles(cachedItems);
+      // 2. Save items to Database immediately so database is consistent with UI state
+      await DatabaseHelper.instance.savePlaylist(itemsToUse);
 
-      // Pre-resolve orientations in background before updating UI state so playing is instant!
-      final resolvedItems = await _resolveOrientations(cachedItems);
+      // Pre-resolve orientations in background before updating UI state
+      final resolvedItems = await _resolveOrientations(itemsToUse);
 
-      // 4. Update memory state
+      // 3. Update memory state immediately to allow direct, immediate playout!
       state = PlaylistState(
         items: resolvedItems,
         currentIndex: _findFirstValidIndex(resolvedItems),
         isLoading: false,
         hasInitialized: true,
+        isOnline: state.isOnline,
+        downloadProgress: 0.0,
       );
+      _logPlaylist(resolvedItems);
       _preloadNextItem();
+
+      // 4. Start sequential background downloader prioritising the active item
+      _currentDownloadSession++;
+      _startBackgroundDownload(resolvedItems, _currentDownloadSession);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to update playlist: $e',
       );
+    }
+  }
+
+  /// Asynchronously downloads missing media items in parallel in the background.
+  Future<void> _startBackgroundDownload(List<MediaItem> items, int session) async {
+    if (items.isEmpty) return;
+
+    final itemsToDownload = items.where((item) => !item.isLocallyAvailable()).toList();
+    if (itemsToDownload.isEmpty) {
+      if (session == _currentDownloadSession) {
+        state = state.copyWith(downloadProgress: 0.0);
+      }
+      return;
+    }
+
+    final total = itemsToDownload.length;
+    final Map<int, double> progresses = {for (var item in itemsToDownload) item.id: 0.0};
+
+    void updateOverallProgress() {
+      if (!mounted || session != _currentDownloadSession) return;
+      final sum = progresses.values.fold(0.0, (a, b) => a + b);
+      state = state.copyWith(downloadProgress: sum / total);
+    }
+
+    if (kIsWeb) {
+      // Simulate parallel download progress on Web so the user can see it!
+      state = state.copyWith(downloadProgress: 0.01);
+      
+      for (int p = 10; p <= 100; p += 10) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (!mounted || session != _currentDownloadSession) return;
+
+        for (var item in itemsToDownload) {
+          progresses[item.id] = p / 100.0;
+        }
+        updateOverallProgress();
+      }
+
+      if (!mounted || session != _currentDownloadSession) return;
+
+      // Mark all items as cached locally in-memory for Web demo
+      final updatedItems = state.items.map((it) {
+        final matches = itemsToDownload.any((d) => d.id == it.id);
+        if (matches) {
+          return it.copyWith(localPath: 'web_cached_${it.id}');
+        }
+        return it;
+      }).toList();
+
+      state = state.copyWith(items: updatedItems, downloadProgress: 0.0);
+      _preloadNextItem();
+      return;
+    }
+
+    // Initialize progress state
+    state = state.copyWith(downloadProgress: 0.01);
+
+    // Start all downloads in parallel in background
+    await Future.wait(
+      itemsToDownload.map((item) async {
+        if (!mounted || session != _currentDownloadSession) return;
+
+        final localPath = await FileManager.instance.downloadFile(
+          item.url,
+          item.id,
+          itemType: item.type,
+          onProgress: (progress) {
+            if (!mounted || session != _currentDownloadSession) return;
+            progresses[item.id] = progress;
+            updateOverallProgress();
+          },
+        );
+
+        if (!mounted || session != _currentDownloadSession) return;
+
+        if (localPath != null) {
+          // Map downloaded local path to items
+          final updatedItems = state.items.map((it) {
+            if (it.id == item.id) {
+              return it.copyWith(localPath: localPath);
+            }
+            return it;
+          }).toList();
+
+          // Persist local path mapping in SQLite
+          await DatabaseHelper.instance.savePlaylist(updatedItems);
+
+          // Update memory state to allow playout from disk
+          if (!mounted || session != _currentDownloadSession) return;
+          state = state.copyWith(items: updatedItems);
+          _preloadNextItem();
+        }
+      }),
+    );
+
+    // Clean up orphaned cache files once everything is fully cached
+    if (session == _currentDownloadSession) {
+      state = state.copyWith(downloadProgress: 0.0);
+      await FileManager.instance.cleanUnusedFiles(state.items);
     }
   }
 
@@ -343,7 +538,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 
     // Loop through checklist to find the next active item
     while (nextIdx != startIdx) {
-      if (state.items[nextIdx].isValidNow(now)) {
+      if (state.items[nextIdx].isValidNow(now, isOnline: state.isOnline)) {
         state = state.copyWith(currentIndex: nextIdx);
         _preloadNextItem();
         return;
@@ -351,7 +546,10 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
       nextIdx = (nextIdx + 1) % state.items.length;
     }
 
-    // Default to first index if nothing is valid or everything is checked
+    // Check if startIdx itself is valid
+    if (state.items[startIdx].isValidNow(now, isOnline: state.isOnline)) {
+      return;
+    }
   }
 
   /// Helper to locate first valid index according to scheduling rules
@@ -359,7 +557,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
     if (list.isEmpty) return 0;
     final now = DateTime.now();
     for (int i = 0; i < list.length; i++) {
-      if (list[i].isValidNow(now)) {
+      if (list[i].isValidNow(now, isOnline: state.isOnline)) {
         return i;
       }
     }
@@ -382,10 +580,15 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
     final now = DateTime.now();
 
     while (nextIdx != startIdx) {
-      if (state.items[nextIdx].isValidNow(now)) {
+      if (state.items[nextIdx].isValidNow(now, isOnline: state.isOnline)) {
         return nextIdx;
       }
       nextIdx = (nextIdx + 1) % state.items.length;
+    }
+    
+    // Check if startIdx itself is valid when wrapping around
+    if (state.items[startIdx].isValidNow(now, isOnline: state.isOnline)) {
+      return startIdx;
     }
     return -1;
   }
@@ -402,6 +605,23 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
       final currentItem = state.items[state.currentIndex];
       VideoPreloadManager.instance.keepOnly([currentItem.id, nextItem.id]);
     }
+  }
+
+  /// Logs all items in the playlist with their scheduling and cached state.
+  void _logPlaylist(List<MediaItem> items) {
+    print('[PlaylistNotifier] --- Active Playlist Items Check ---');
+    final now = DateTime.now();
+    for (var item in items) {
+      final isCached = item.isLocallyAvailable();
+      final isValid = item.isValidNow(now, isOnline: state.isOnline);
+      print('  ID: ${item.id} | Type: ${item.type} | Cached: $isCached | ValidNow: $isValid | URL: ${item.url}');
+      if (item.schedule != null) {
+        print('    Schedule: Type: ${item.schedule!.type} | Start: ${item.schedule!.startDatetime} | End: ${item.schedule!.endDatetime} | Days: ${item.schedule!.daysOfWeek}');
+      } else {
+        print('    Schedule: Persistent (Runs fallback forever)');
+      }
+    }
+    print('[PlaylistNotifier] -------------------------------------');
   }
 }
 

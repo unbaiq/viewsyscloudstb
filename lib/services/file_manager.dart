@@ -25,7 +25,12 @@ class FileManager {
 
   /// Downloads a file from the remote URL and saves it to local disk storage using Dio.
   /// On Web, it bypasses downloading and returns the original URL.
-  Future<String?> downloadFile(String url, int itemId, [String? itemType]) async {
+  Future<String?> downloadFile(
+    String url,
+    int itemId, {
+    String? itemType,
+    void Function(double progress)? onProgress,
+  }) async {
     if (kIsWeb) {
       return url; // Direct URL streaming fallback on Web
     }
@@ -52,12 +57,21 @@ class FileManager {
       // Return path if file is already fully downloaded and not empty (e.g. from failed downloads)
       if (await file.exists() && await file.length() > 0) {
         print('Media file ID $itemId already exists locally at: $localFilePath');
+        if (onProgress != null) onProgress(1.0);
         return localFilePath;
       }
 
       print('Downloading media file ID $itemId from URL: $url via Dio...');
       final dio = Dio();
-      final response = await dio.download(url, localFilePath);
+      final response = await dio.download(
+        url,
+        localFilePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1 && onProgress != null) {
+            onProgress(received / total);
+          }
+        },
+      );
       if (response.statusCode == 200) {
         print('Successfully downloaded and stored local media file: $localFilePath');
         return localFilePath;
