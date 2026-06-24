@@ -6,8 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'providers/player_provider.dart';
-import 'screens/player_shell.dart';
+import '../providers/player_provider.dart';
+import 'player_shell.dart';
 
 class ActivationScreen extends ConsumerStatefulWidget {
   const ActivationScreen({super.key});

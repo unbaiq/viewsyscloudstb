@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'activation_screen.dart';
-import 'screens/player_shell.dart';
+import 'player_shell.dart';
 
 class SplashScreen extends StatefulWidget {
   final Widget? nextScreen;

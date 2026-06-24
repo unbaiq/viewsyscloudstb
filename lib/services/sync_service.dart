@@ -160,28 +160,93 @@ class SyncService {
           }
 
           // TODO: Confirm exactly which JSON key the backend uses for the sidebar URL and remove the fallback defensive parsing here
-          String? parsedSidebarUrl = data['sidebar_url']?.toString() ?? data['webview_url']?.toString() ?? data['cms_url']?.toString();
+          String? parsedSidebarUrl = data['menu_url']?.toString() ?? data['sidebar_url']?.toString() ?? data['webview_url']?.toString() ?? data['cms_url']?.toString();
           if (parsedSidebarUrl == null && data['data'] is Map) {
             final inner = data['data'] as Map;
-            parsedSidebarUrl = inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
+            parsedSidebarUrl = inner['menu_url']?.toString() ?? inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
           }
           if (parsedSidebarUrl == null && data['cluster'] is Map) {
             final inner = data['cluster'] as Map;
-            parsedSidebarUrl = inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
+            parsedSidebarUrl = inner['menu_url']?.toString() ?? inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
           }
+
+          // TODO: Confirm exactly which JSON keys the backend uses for triple layout URLs
+          String? parsedCenterUrl = data['center_url']?.toString() ?? data['triple_center_url']?.toString() ?? data['webview_center_url']?.toString();
+          String? parsedRightUrl = data['right_url']?.toString() ?? data['triple_right_url']?.toString() ?? data['webview_right_url']?.toString();
+          if (parsedCenterUrl == null && data['data'] is Map) {
+            final inner = data['data'] as Map;
+            parsedCenterUrl = inner['center_url']?.toString() ?? inner['triple_center_url']?.toString() ?? inner['webview_center_url']?.toString();
+          }
+          if (parsedRightUrl == null && data['data'] is Map) {
+            final inner = data['data'] as Map;
+            parsedRightUrl = inner['right_url']?.toString() ?? inner['triple_right_url']?.toString() ?? inner['webview_right_url']?.toString();
+          }
+          if (parsedCenterUrl == null && data['cluster'] is Map) {
+            final inner = data['cluster'] as Map;
+            parsedCenterUrl = inner['center_url']?.toString() ?? inner['triple_center_url']?.toString() ?? inner['webview_center_url']?.toString();
+          }
+          if (parsedRightUrl == null && data['cluster'] is Map) {
+            final inner = data['cluster'] as Map;
+            parsedRightUrl = inner['right_url']?.toString() ?? inner['triple_right_url']?.toString() ?? inner['webview_right_url']?.toString();
+          }
+
+          // TODO: Confirm exactly which JSON key the backend uses for four_grid layout URLs
+          String? parsedTopRightUrl = data['top_right_url']?.toString() ?? data['grid_top_right_url']?.toString() ?? data['zone2_url']?.toString();
+          String? parsedBottomLeftUrl = data['bottom_left_url']?.toString() ?? data['grid_bottom_left_url']?.toString() ?? data['zone3_url']?.toString();
+          String? parsedBottomRightUrl = data['bottom_right_url']?.toString() ?? data['grid_bottom_right_url']?.toString() ?? data['zone4_url']?.toString();
+          if (parsedTopRightUrl == null && data['data'] is Map) {
+            final inner = data['data'] as Map;
+            parsedTopRightUrl = inner['top_right_url']?.toString() ?? inner['grid_top_right_url']?.toString() ?? inner['zone2_url']?.toString();
+            parsedBottomLeftUrl = inner['bottom_left_url']?.toString() ?? inner['grid_bottom_left_url']?.toString() ?? inner['zone3_url']?.toString();
+            parsedBottomRightUrl = inner['bottom_right_url']?.toString() ?? inner['grid_bottom_right_url']?.toString() ?? inner['zone4_url']?.toString();
+          }
+          if (parsedTopRightUrl == null && data['cluster'] is Map) {
+            final inner = data['cluster'] as Map;
+            parsedTopRightUrl = inner['top_right_url']?.toString() ?? inner['grid_top_right_url']?.toString() ?? inner['zone2_url']?.toString();
+            parsedBottomLeftUrl = inner['bottom_left_url']?.toString() ?? inner['grid_bottom_left_url']?.toString() ?? inner['zone3_url']?.toString();
+            parsedBottomRightUrl = inner['bottom_right_url']?.toString() ?? inner['grid_bottom_right_url']?.toString() ?? inner['zone4_url']?.toString();
+          }
+
+          parsedSidebarUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedCenterUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedRightUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedTopRightUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedBottomLeftUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedBottomRightUrl ??= 'https://cms.thelocads.com/clusters';
 
           final currentActState = currentRefAfterFetch.read(activationProvider);
           layout = layout?.trim().toLowerCase();
           if (layout == 'half') layout = 'half_split';
-          if (layout != null && layout != 'ticker' && layout != 'header' && layout != 'half_split' && layout != 'sidebar') {
+          if (layout == 'menu') layout = 'menu_board';
+          if (layout == 'grid') layout = 'four_grid';
+          if (layout != null && layout != 'ticker' && layout != 'header' && layout != 'half_split' && layout != 'sidebar' && layout != 'triple' && layout != 'menu_board' && layout != 'four_grid') {
             layout = 'fullscreen';
           }
 
           final finalLayoutToSave = layout ?? currentActState.layout;
           final finalSidebarUrlToSave = parsedSidebarUrl ?? currentActState.sidebarUrl;
+          final finalCenterUrlToSave = parsedCenterUrl ?? currentActState.centerUrl;
+          final finalRightUrlToSave = parsedRightUrl ?? currentActState.rightUrl;
+          final finalTopRightUrlToSave = parsedTopRightUrl ?? currentActState.topRightUrl;
+          final finalBottomLeftUrlToSave = parsedBottomLeftUrl ?? currentActState.bottomLeftUrl;
+          final finalBottomRightUrlToSave = parsedBottomRightUrl ?? currentActState.bottomRightUrl;
 
-          if (currentActState.layout != finalLayoutToSave || currentActState.sidebarUrl != finalSidebarUrlToSave) {
-            await currentRefAfterFetch.read(activationProvider.notifier).updateLayout(finalLayoutToSave, sidebarUrl: finalSidebarUrlToSave);
+          if (currentActState.layout != finalLayoutToSave || 
+              currentActState.sidebarUrl != finalSidebarUrlToSave || 
+              currentActState.centerUrl != finalCenterUrlToSave || 
+              currentActState.rightUrl != finalRightUrlToSave ||
+              currentActState.topRightUrl != finalTopRightUrlToSave ||
+              currentActState.bottomLeftUrl != finalBottomLeftUrlToSave ||
+              currentActState.bottomRightUrl != finalBottomRightUrlToSave) {
+            await currentRefAfterFetch.read(activationProvider.notifier).updateLayout(
+              finalLayoutToSave, 
+              sidebarUrl: finalSidebarUrlToSave, 
+              centerUrl: finalCenterUrlToSave, 
+              rightUrl: finalRightUrlToSave,
+              topRightUrl: finalTopRightUrlToSave,
+              bottomLeftUrl: finalBottomLeftUrlToSave,
+              bottomRightUrl: finalBottomRightUrlToSave,
+            );
           }
 
           final activeLayout = finalLayoutToSave;
@@ -214,6 +279,8 @@ class SyncService {
               await currentRefAfterFetch.read(tickersProvider.notifier).updateTickers(parsedTickers);
             }
           }
+
+
 
           // Capture screen if requested
           if (takeScreenshot) {
@@ -299,28 +366,93 @@ class SyncService {
           }
 
           // TODO: Confirm exactly which JSON key the backend uses for the sidebar URL and remove the fallback defensive parsing here
-          String? parsedSidebarUrl = data['sidebar_url']?.toString() ?? data['webview_url']?.toString() ?? data['cms_url']?.toString();
+          String? parsedSidebarUrl = data['menu_url']?.toString() ?? data['sidebar_url']?.toString() ?? data['webview_url']?.toString() ?? data['cms_url']?.toString();
           if (parsedSidebarUrl == null && data['data'] is Map) {
             final inner = data['data'] as Map;
-            parsedSidebarUrl = inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
+            parsedSidebarUrl = inner['menu_url']?.toString() ?? inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
           }
           if (parsedSidebarUrl == null && data['cluster'] is Map) {
             final inner = data['cluster'] as Map;
-            parsedSidebarUrl = inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
+            parsedSidebarUrl = inner['menu_url']?.toString() ?? inner['sidebar_url']?.toString() ?? inner['webview_url']?.toString() ?? inner['cms_url']?.toString();
           }
+
+          // TODO: Confirm exactly which JSON keys the backend uses for triple layout URLs
+          String? parsedCenterUrl = data['center_url']?.toString() ?? data['triple_center_url']?.toString() ?? data['webview_center_url']?.toString();
+          String? parsedRightUrl = data['right_url']?.toString() ?? data['triple_right_url']?.toString() ?? data['webview_right_url']?.toString();
+          if (parsedCenterUrl == null && data['data'] is Map) {
+            final inner = data['data'] as Map;
+            parsedCenterUrl = inner['center_url']?.toString() ?? inner['triple_center_url']?.toString() ?? inner['webview_center_url']?.toString();
+          }
+          if (parsedRightUrl == null && data['data'] is Map) {
+            final inner = data['data'] as Map;
+            parsedRightUrl = inner['right_url']?.toString() ?? inner['triple_right_url']?.toString() ?? inner['webview_right_url']?.toString();
+          }
+          if (parsedCenterUrl == null && data['cluster'] is Map) {
+            final inner = data['cluster'] as Map;
+            parsedCenterUrl = inner['center_url']?.toString() ?? inner['triple_center_url']?.toString() ?? inner['webview_center_url']?.toString();
+          }
+          if (parsedRightUrl == null && data['cluster'] is Map) {
+            final inner = data['cluster'] as Map;
+            parsedRightUrl = inner['right_url']?.toString() ?? inner['triple_right_url']?.toString() ?? inner['webview_right_url']?.toString();
+          }
+
+          // TODO: Confirm exactly which JSON key the backend uses for four_grid layout URLs
+          String? parsedTopRightUrl = data['top_right_url']?.toString() ?? data['grid_top_right_url']?.toString() ?? data['zone2_url']?.toString();
+          String? parsedBottomLeftUrl = data['bottom_left_url']?.toString() ?? data['grid_bottom_left_url']?.toString() ?? data['zone3_url']?.toString();
+          String? parsedBottomRightUrl = data['bottom_right_url']?.toString() ?? data['grid_bottom_right_url']?.toString() ?? data['zone4_url']?.toString();
+          if (parsedTopRightUrl == null && data['data'] is Map) {
+            final inner = data['data'] as Map;
+            parsedTopRightUrl = inner['top_right_url']?.toString() ?? inner['grid_top_right_url']?.toString() ?? inner['zone2_url']?.toString();
+            parsedBottomLeftUrl = inner['bottom_left_url']?.toString() ?? inner['grid_bottom_left_url']?.toString() ?? inner['zone3_url']?.toString();
+            parsedBottomRightUrl = inner['bottom_right_url']?.toString() ?? inner['grid_bottom_right_url']?.toString() ?? inner['zone4_url']?.toString();
+          }
+          if (parsedTopRightUrl == null && data['cluster'] is Map) {
+            final inner = data['cluster'] as Map;
+            parsedTopRightUrl = inner['top_right_url']?.toString() ?? inner['grid_top_right_url']?.toString() ?? inner['zone2_url']?.toString();
+            parsedBottomLeftUrl = inner['bottom_left_url']?.toString() ?? inner['grid_bottom_left_url']?.toString() ?? inner['zone3_url']?.toString();
+            parsedBottomRightUrl = inner['bottom_right_url']?.toString() ?? inner['grid_bottom_right_url']?.toString() ?? inner['zone4_url']?.toString();
+          }
+
+          parsedSidebarUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedCenterUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedRightUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedTopRightUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedBottomLeftUrl ??= 'https://cms.thelocads.com/clusters';
+          parsedBottomRightUrl ??= 'https://cms.thelocads.com/clusters';
 
           final currentActState = currentRef.read(activationProvider);
           layout = layout?.trim().toLowerCase();
           if (layout == 'half') layout = 'half_split';
-          if (layout != null && layout != 'ticker' && layout != 'header' && layout != 'half_split' && layout != 'sidebar') {
+          if (layout == 'menu') layout = 'menu_board';
+          if (layout == 'grid') layout = 'four_grid';
+          if (layout != null && layout != 'ticker' && layout != 'header' && layout != 'half_split' && layout != 'sidebar' && layout != 'triple' && layout != 'menu_board' && layout != 'four_grid') {
             layout = 'fullscreen';
           }
 
           final finalLayoutToSave = layout ?? currentActState.layout;
           final finalSidebarUrlToSave = parsedSidebarUrl ?? currentActState.sidebarUrl;
+          final finalCenterUrlToSave = parsedCenterUrl ?? currentActState.centerUrl;
+          final finalRightUrlToSave = parsedRightUrl ?? currentActState.rightUrl;
+          final finalTopRightUrlToSave = parsedTopRightUrl ?? currentActState.topRightUrl;
+          final finalBottomLeftUrlToSave = parsedBottomLeftUrl ?? currentActState.bottomLeftUrl;
+          final finalBottomRightUrlToSave = parsedBottomRightUrl ?? currentActState.bottomRightUrl;
 
-          if (currentActState.layout != finalLayoutToSave || currentActState.sidebarUrl != finalSidebarUrlToSave) {
-            await currentRef.read(activationProvider.notifier).updateLayout(finalLayoutToSave, sidebarUrl: finalSidebarUrlToSave);
+          if (currentActState.layout != finalLayoutToSave || 
+              currentActState.sidebarUrl != finalSidebarUrlToSave || 
+              currentActState.centerUrl != finalCenterUrlToSave || 
+              currentActState.rightUrl != finalRightUrlToSave ||
+              currentActState.topRightUrl != finalTopRightUrlToSave ||
+              currentActState.bottomLeftUrl != finalBottomLeftUrlToSave ||
+              currentActState.bottomRightUrl != finalBottomRightUrlToSave) {
+            await currentRef.read(activationProvider.notifier).updateLayout(
+              finalLayoutToSave, 
+              sidebarUrl: finalSidebarUrlToSave, 
+              centerUrl: finalCenterUrlToSave, 
+              rightUrl: finalRightUrlToSave,
+              topRightUrl: finalTopRightUrlToSave,
+              bottomLeftUrl: finalBottomLeftUrlToSave,
+              bottomRightUrl: finalBottomRightUrlToSave,
+            );
           }
 
           final activeLayout = finalLayoutToSave;

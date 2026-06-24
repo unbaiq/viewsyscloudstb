@@ -13,12 +13,15 @@ import '../services/heartbeat_service.dart';
 import '../services/sync_service.dart';
 import '../services/screenshot_service.dart';
 import '../services/zone_content_service.dart';
-import '../activation_screen.dart';
+import 'activation_screen.dart';
 
 import '../widgets/video_player_widget.dart';
 import '../widgets/ticker_bar.dart';
 import 'layouts/half_split_layout.dart';
 import 'layouts/sidebar_layout.dart';
+import 'layouts/triple_layout.dart';
+import 'layouts/menu_board_layout.dart';
+import 'layouts/four_grid_layout.dart';
 
 class PlayerShell extends ConsumerStatefulWidget {
   const PlayerShell({super.key});
@@ -284,6 +287,9 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     final isTickerLayout = actState.layout == 'ticker';
     final isHalfSplitLayout = actState.layout == 'half_split';
     final isSidebarLayout = actState.layout == 'sidebar';
+    final isTripleLayout = actState.layout == 'triple';
+    final isMenuBoardLayout = actState.layout == 'menu_board';
+    final isFourGridLayout = actState.layout == 'four_grid';
 
     Widget finalBody = AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
@@ -302,10 +308,31 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
                   baseMediaSurface: playerBody,
                   sidebarUrl: actState.sidebarUrl,
                 )
-              : Container(
-                  key: const ValueKey('fullscreen'),
-                  child: playerBody,
-                ),
+              : isTripleLayout
+                  ? TripleLayout(
+                      key: const ValueKey('triple'),
+                      baseMediaSurface: playerBody,
+                      centerUrl: actState.centerUrl,
+                      rightUrl: actState.rightUrl,
+                    )
+                  : isMenuBoardLayout
+                      ? MenuBoardLayout(
+                          key: const ValueKey('menu_board'),
+                          baseMediaSurface: playerBody,
+                          webviewUrl: actState.sidebarUrl,
+                        )
+                      : isFourGridLayout
+                          ? FourGridLayout(
+                              key: const ValueKey('four_grid'),
+                              baseMediaSurface: playerBody,
+                              topRightUrl: actState.topRightUrl,
+                              bottomLeftUrl: actState.bottomLeftUrl,
+                              bottomRightUrl: actState.bottomRightUrl,
+                            )
+                          : Container(
+                              key: const ValueKey('fullscreen'),
+                              child: playerBody,
+                            ),
     );
 
     return Screenshot(

@@ -11,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:viewsys/main.dart';
-import 'package:viewsys/screens/ticker_screen.dart';
+
 import 'package:viewsys/providers/player_provider.dart';
 import 'package:viewsys/models/ticker_item.dart';
 import 'package:viewsys/services/sync_service.dart';
@@ -79,45 +79,5 @@ void main() {
     expect(find.text('Link Your Screen'), findsOneWidget);
   });
 
-  testWidgets('TickerScreen renders ticker items and animates', (WidgetTester tester) async {
-    // Initialize SharedPreferences with empty mock values for this test.
-    SharedPreferences.setMockInitialValues({});
-
-    // Build TickerScreen wrapped with ProviderScope containing mock tickers.
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          tickersProvider.overrideWith((ref) {
-            final notifier = TickersNotifier();
-            notifier.state = [
-              TickerItem(id: 1, text: 'Test Ticker 1', bgColor: '#FF0000', textColor: '#FFFFFF'),
-              TickerItem(id: 2, text: 'Test Ticker 2', bgColor: '#00FF00', textColor: '#000000'),
-            ];
-            return notifier;
-          }),
-        ],
-        child: const MaterialApp(
-          home: TickerScreen(),
-        ),
-      ),
-    );
-
-    // Initial frame builds the opacity 0.0 row to measure it
-    await tester.pump();
-
-    // Trigger the post frame callback and allow the animation controller to build
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.pump();
-
-    // Verify both ticker texts are rendered on the screen
-    expect(find.text('Test Ticker 1'), findsOneWidget);
-    expect(find.text('Test Ticker 2'), findsOneWidget);
-
-    // Dispose the widget tree to trigger TickerScreen dispose and cancel its internal timers
-    await tester.pumpWidget(const SizedBox.shrink());
-
-    // Stop background timers to prevent test teardown failures
-    SyncService.instance.stop();
-    HeartbeatService.instance.stop();
-  });
+  // TickerScreen test removed as TickerScreen no longer exists
 }

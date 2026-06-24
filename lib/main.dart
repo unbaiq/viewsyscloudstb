@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
-import 'splash_screen.dart';
-import 'activation_screen.dart';
+import 'screens/splash_screen.dart';
+import 'screens/activation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -23,6 +23,11 @@ class ActivationState {
   final int syncInterval;
   final String layout;
   final String? sidebarUrl;
+  final String? centerUrl;
+  final String? rightUrl;
+  final String? topRightUrl;
+  final String? bottomLeftUrl;
+  final String? bottomRightUrl;
 
   const ActivationState({
     required this.isActivated,
@@ -34,6 +39,11 @@ class ActivationState {
     required this.syncInterval,
     required this.layout,
     this.sidebarUrl,
+    this.centerUrl,
+    this.rightUrl,
+    this.topRightUrl,
+    this.bottomLeftUrl,
+    this.bottomRightUrl,
   });
 
   ActivationState copyWith({
@@ -46,6 +56,11 @@ class ActivationState {
     int? syncInterval,
     String? layout,
     String? sidebarUrl,
+    String? centerUrl,
+    String? rightUrl,
+    String? topRightUrl,
+    String? bottomLeftUrl,
+    String? bottomRightUrl,
   }) {
     return ActivationState(
       isActivated: isActivated ?? this.isActivated,
@@ -57,6 +72,11 @@ class ActivationState {
       syncInterval: syncInterval ?? this.syncInterval,
       layout: layout ?? this.layout,
       sidebarUrl: sidebarUrl ?? this.sidebarUrl,
+      centerUrl: centerUrl ?? this.centerUrl,
+      rightUrl: rightUrl ?? this.rightUrl,
+      topRightUrl: topRightUrl ?? this.topRightUrl,
+      bottomLeftUrl: bottomLeftUrl ?? this.bottomLeftUrl,
+      bottomRightUrl: bottomRightUrl ?? this.bottomRightUrl,
     );
   }
 }
@@ -73,6 +93,8 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
           syncInterval: 10,
           layout: 'fullscreen',
           sidebarUrl: null,
+          centerUrl: null,
+          rightUrl: null,
         )) {
     loadActivationFromPrefs();
   }
@@ -80,7 +102,9 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
   String _normalizeLayout(String? raw) {
     final clean = raw?.trim().toLowerCase();
     if (clean == 'half') return 'half_split';
-    if (clean == 'ticker' || clean == 'header' || clean == 'half_split' || clean == 'sidebar') {
+    if (clean == 'menu') return 'menu_board';
+    if (clean == 'grid') return 'four_grid';
+    if (clean == 'ticker' || clean == 'header' || clean == 'half_split' || clean == 'sidebar' || clean == 'triple' || clean == 'menu_board' || clean == 'four_grid') {
       return clean!;
     }
     return 'fullscreen';
@@ -98,16 +122,27 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
     final syncInterval = int.tryParse(syncIntervalStr) ?? 10;
     final layout = _normalizeLayout(prefs.getString('screen_layout'));
     final sidebarUrl = prefs.getString('sidebar_url');
+    final centerUrl = prefs.getString('center_url');
+    final rightUrl = prefs.getString('right_url');
+    final topRightUrl = prefs.getString('top_right_url');
+    final bottomLeftUrl = prefs.getString('bottom_left_url');
+    final bottomRightUrl = prefs.getString('bottom_right_url');
 
     state = ActivationState(
       isActivated: isActivated && deviceCode != '------' && screenId.isNotEmpty,
+      isLoading: false,
       deviceCode: deviceCode,
       screenId: screenId,
       companyId: companyId,
       orientation: orientation,
       syncInterval: syncInterval,
       layout: layout,
-      isLoading: false, // Finished loading
+      sidebarUrl: sidebarUrl,
+      centerUrl: centerUrl,
+      rightUrl: rightUrl,
+      topRightUrl: topRightUrl,
+      bottomLeftUrl: bottomLeftUrl,
+      bottomRightUrl: bottomRightUrl,
     );
   }
 
@@ -160,18 +195,42 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
   }
 
   /// Update screen layout dynamically from central CMS sync pings
-  Future<void> updateLayout(String newLayout, {String? sidebarUrl}) async {
+  Future<void> updateLayout(String newLayout, {
+    String? sidebarUrl, 
+    String? centerUrl, 
+    String? rightUrl,
+    String? topRightUrl,
+    String? bottomLeftUrl,
+    String? bottomRightUrl,
+  }) async {
     final cleanLayout = _normalizeLayout(newLayout);
-    if (state.layout == cleanLayout && state.sidebarUrl == sidebarUrl) return;
+    if (state.layout == cleanLayout && 
+        state.sidebarUrl == sidebarUrl && 
+        state.centerUrl == centerUrl && 
+        state.rightUrl == rightUrl &&
+        state.topRightUrl == topRightUrl &&
+        state.bottomLeftUrl == bottomLeftUrl &&
+        state.bottomRightUrl == bottomRightUrl) return;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('screen_layout', cleanLayout);
-    if (sidebarUrl != null) {
-      await prefs.setString('sidebar_url', sidebarUrl);
-    } else {
-      await prefs.remove('sidebar_url');
-    }
-    state = state.copyWith(layout: cleanLayout, sidebarUrl: sidebarUrl);
+    
+    if (sidebarUrl != null) await prefs.setString('sidebar_url', sidebarUrl); else await prefs.remove('sidebar_url');
+    if (centerUrl != null) await prefs.setString('center_url', centerUrl); else await prefs.remove('center_url');
+    if (rightUrl != null) await prefs.setString('right_url', rightUrl); else await prefs.remove('right_url');
+    if (topRightUrl != null) await prefs.setString('top_right_url', topRightUrl); else await prefs.remove('top_right_url');
+    if (bottomLeftUrl != null) await prefs.setString('bottom_left_url', bottomLeftUrl); else await prefs.remove('bottom_left_url');
+    if (bottomRightUrl != null) await prefs.setString('bottom_right_url', bottomRightUrl); else await prefs.remove('bottom_right_url');
+
+    state = state.copyWith(
+      layout: cleanLayout, 
+      sidebarUrl: sidebarUrl, 
+      centerUrl: centerUrl, 
+      rightUrl: rightUrl,
+      topRightUrl: topRightUrl,
+      bottomLeftUrl: bottomLeftUrl,
+      bottomRightUrl: bottomRightUrl,
+    );
   }
 
   /// Refreshes the activation details from the server using the saved device/pairing code.
@@ -259,6 +318,9 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
     await prefs.remove('orientation');
     await prefs.remove('sync_interval');
     await prefs.remove('screen_layout');
+    await prefs.remove('top_right_url');
+    await prefs.remove('bottom_left_url');
+    await prefs.remove('bottom_right_url');
 
     // Wipe cached playlists and local files
     await DatabaseHelper.instance.clearPlaylist();

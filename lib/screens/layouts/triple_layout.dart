@@ -10,24 +10,23 @@ import '../../widgets/video_player_widget.dart';
 import '../../widgets/shimmer_placeholder.dart';
 import '../../widgets/cms_webview_panel.dart';
 
-const int _flexLeft = 7;
-const int _flexRight = 3;
-
-class SidebarLayout extends ConsumerStatefulWidget {
+class TripleLayout extends ConsumerStatefulWidget {
   final Widget baseMediaSurface;
-  final String? sidebarUrl;
+  final String? centerUrl;
+  final String? rightUrl;
 
-  const SidebarLayout({
+  const TripleLayout({
     super.key,
     required this.baseMediaSurface,
-    this.sidebarUrl,
+    this.centerUrl,
+    this.rightUrl,
   });
 
   @override
-  ConsumerState<SidebarLayout> createState() => _SidebarLayoutState();
+  ConsumerState<TripleLayout> createState() => _TripleLayoutState();
 }
 
-class _SidebarLayoutState extends ConsumerState<SidebarLayout> {
+class _TripleLayoutState extends ConsumerState<TripleLayout> {
   @override
   void initState() {
     super.initState();
@@ -42,13 +41,14 @@ class _SidebarLayoutState extends ConsumerState<SidebarLayout> {
 
   @override
   Widget build(BuildContext context) {
-    final zoneState = ref.watch(zoneContentProvider);
+    final centerState = ref.watch(centerZoneProvider);
+    final rightState = ref.watch(rightZoneProvider);
 
     return Row(
       children: [
-        // LEFT ZONE (~70%): Existing base media surface
+        // LEFT ZONE (1/3): Existing base media surface
         Expanded(
-          flex: _flexLeft,
+          flex: 1,
           child: widget.baseMediaSurface,
         ),
         
@@ -58,27 +58,41 @@ class _SidebarLayoutState extends ConsumerState<SidebarLayout> {
           color: Colors.white.withValues(alpha: 0.1),
         ),
 
-        // RIGHT ZONE (~30%): Schedule API content, with fallback to sidebarUrl
+        // CENTER ZONE (1/3): Schedule API Content with fallback
         Expanded(
-          flex: _flexRight,
+          flex: 1,
           child: Container(
             color: Colors.black,
-            child: _buildRightZoneContent(zoneState),
+            child: _buildZoneContent(centerState, widget.centerUrl),
+          ),
+        ),
+
+        // Divider
+        Container(
+          width: 2,
+          color: Colors.white.withValues(alpha: 0.1),
+        ),
+
+        // RIGHT ZONE (1/3): Schedule API Content with fallback
+        Expanded(
+          flex: 1,
+          child: Container(
+            color: Colors.black,
+            child: _buildZoneContent(rightState, widget.rightUrl),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildRightZoneContent(ZoneContentState state) {
+  Widget _buildZoneContent(ZoneContentState state, String? fallbackUrl) {
     if (state.isLoading) {
       return const Center(child: ShimmerPlaceholder());
     }
 
     if (state.errorMessage != null || state.item == null) {
-      // Fallback to the webview panel using sidebarUrl if provided
-      if (widget.sidebarUrl != null && widget.sidebarUrl!.isNotEmpty) {
-        return CmsWebviewPanel(url: widget.sidebarUrl);
+      if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
+        return CmsWebviewPanel(url: fallbackUrl);
       }
       return const Center(
         child: Column(
@@ -95,25 +109,23 @@ class _SidebarLayoutState extends ConsumerState<SidebarLayout> {
       );
     }
 
-    return _buildMediaView(state.item!);
+    return _buildMediaView(state.item!, fallbackUrl);
   }
 
-  Widget _buildMediaView(MediaItem item) {
+  Widget _buildMediaView(MediaItem item, String? fallbackUrl) {
     if (item.type == 'video') {
       return VideoPlayerWidget(
         key: ValueKey('zone_video_${item.id}'),
         item: item,
         forceLoop: true,
-        onComplete: () {
-          // Loop the video until new content is fetched
-        },
+        onComplete: () {},
       );
     } else {
-      return _buildImageView(item);
+      return _buildImageView(item, fallbackUrl);
     }
   }
 
-  Widget _buildImageView(MediaItem item) {
+  Widget _buildImageView(MediaItem item, String? fallbackUrl) {
     final fileExists = item.localPath != null &&
         item.localPath!.isNotEmpty &&
         !kIsWeb &&
@@ -127,7 +139,7 @@ class _SidebarLayoutState extends ConsumerState<SidebarLayout> {
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) =>
-            _buildErrorPlaceholder('Image failed to stream'),
+            _buildErrorPlaceholder('Image failed to stream', fallbackUrl),
       );
     }
 
@@ -137,13 +149,13 @@ class _SidebarLayoutState extends ConsumerState<SidebarLayout> {
       width: double.infinity,
       height: double.infinity,
       errorBuilder: (context, error, stackTrace) =>
-          _buildErrorPlaceholder('Cached image failed to read'),
+          _buildErrorPlaceholder('Cached image failed to read', fallbackUrl),
     );
   }
 
-  Widget _buildErrorPlaceholder(String error) {
-    if (widget.sidebarUrl != null && widget.sidebarUrl!.isNotEmpty) {
-      return CmsWebviewPanel(url: widget.sidebarUrl);
+  Widget _buildErrorPlaceholder(String error, String? fallbackUrl) {
+    if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
+      return CmsWebviewPanel(url: fallbackUrl);
     }
     return Container(
       color: Colors.black,

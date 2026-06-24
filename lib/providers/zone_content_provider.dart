@@ -38,8 +38,8 @@ class ZoneContentNotifier extends StateNotifier<ZoneContentState> {
   }
 
   void updateItem(MediaItem item) {
-    // If the item URL and ID is identical, do not replace to avoid unnecessary re-rendering
-    if (state.item?.id == item.id && state.item?.url == item.url) {
+    // If the item URL, ID, and localPath are identical, do not replace to avoid unnecessary re-rendering
+    if (state.item?.id == item.id && state.item?.url == item.url && state.item?.localPath == item.localPath) {
       return;
     }
     state = ZoneContentState(
@@ -50,5 +50,29 @@ class ZoneContentNotifier extends StateNotifier<ZoneContentState> {
 }
 
 final zoneContentProvider = StateNotifierProvider<ZoneContentNotifier, ZoneContentState>((ref) {
+  return ZoneContentNotifier();
+});
+
+final leftZoneProvider = StateNotifierProvider<ZoneContentNotifier, ZoneContentState>((ref) {
+  return ZoneContentNotifier();
+});
+
+final centerZoneProvider = StateNotifierProvider<ZoneContentNotifier, ZoneContentState>((ref) {
+  return ZoneContentNotifier();
+});
+
+final rightZoneProvider = StateNotifierProvider<ZoneContentNotifier, ZoneContentState>((ref) {
+  return ZoneContentNotifier();
+});
+
+final topRightZoneProvider = StateNotifierProvider<ZoneContentNotifier, ZoneContentState>((ref) {
+  return ZoneContentNotifier();
+});
+
+final bottomLeftZoneProvider = StateNotifierProvider<ZoneContentNotifier, ZoneContentState>((ref) {
+  return ZoneContentNotifier();
+});
+
+final bottomRightZoneProvider = StateNotifierProvider<ZoneContentNotifier, ZoneContentState>((ref) {
   return ZoneContentNotifier();
 });

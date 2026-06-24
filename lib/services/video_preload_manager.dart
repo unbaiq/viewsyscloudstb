@@ -31,7 +31,10 @@ class VideoPreloadManager {
 
     print('[VideoPreloadManager] Preloading video for item ${item.id}: ${item.localPath}');
     try {
-      final controller = VideoPlayerController.file(File(item.localPath!));
+      final controller = VideoPlayerController.file(
+        File(item.localPath!),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
       _controllers[item.id] = controller;
       
       final completer = Completer<bool>();

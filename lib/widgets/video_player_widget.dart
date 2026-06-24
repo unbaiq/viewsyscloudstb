@@ -9,6 +9,19 @@ import '../models/media_item.dart';
 import '../providers/player_provider.dart';
 import '../services/video_preload_manager.dart';
 
+/// Tracks the number of actively rendering video widgets on screen
+class ActiveVideoCountNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void increment() => state++;
+  void decrement() => state--;
+}
+
+final activeVideoCountProvider = NotifierProvider<ActiveVideoCountNotifier, int>(() {
+  return ActiveVideoCountNotifier();
+});
+
 /// A wrapper widget to manage the lifecycle of a video controller safely.
 class VideoPlayerWidget extends ConsumerStatefulWidget {
   final MediaItem item;
@@ -38,6 +51,11 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
   @override
   void initState() {
     super.initState();
+    Future.microtask(() {
+      if (mounted) {
+        ref.read(activeVideoCountProvider.notifier).increment();
+      }
+    });
     _initVideo();
   }
 
@@ -49,6 +67,11 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
 
   @override
   void dispose() {
+    Future.microtask(() {
+      try {
+        ref.read(activeVideoCountProvider.notifier).decrement();
+      } catch (_) {}
+    });
     _fallbackTimer?.cancel();
     _controller?.removeListener(_videoListener);
     _controller?.dispose();
@@ -122,12 +145,21 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
           }
 
           print('[VideoPlayerWidget] File not cached yet. Streaming from network: ${widget.item.url}');
-          _controller = VideoPlayerController.networkUrl(Uri.parse(widget.item.url));
+          _controller = VideoPlayerController.networkUrl(
+            Uri.parse(widget.item.url),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
         } else {
           if (kIsWeb) {
-            _controller = VideoPlayerController.networkUrl(Uri.parse(widget.item.url));
+            _controller = VideoPlayerController.networkUrl(
+              Uri.parse(widget.item.url),
+              videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+            );
           } else {
-            _controller = VideoPlayerController.file(File(widget.item.localPath!));
+            _controller = VideoPlayerController.file(
+              File(widget.item.localPath!),
+              videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+            );
           }
         }
 
@@ -191,6 +223,24 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Dynamic audio muting: if more than 1 video is rendering, mute all.
+    ref.listen<int>(activeVideoCountProvider, (previous, next) {
+      if (_controller != null && _controller!.value.isInitialized) {
+        final shouldMute = next > 1;
+        if ((_controller!.value.volume == 0.0) != shouldMute) {
+          _controller!.setVolume(shouldMute ? 0.0 : 1.0);
+          print('[VideoPlayerWidget] Mute state updated: $shouldMute (Active videos: $next)');
+        }
+      }
+    });
+
+    final activeVideoCount = ref.watch(activeVideoCountProvider);
+    final isMuted = activeVideoCount > 1;
+    
+    if (_controller != null && _controller!.value.isInitialized && (_controller!.value.volume == 0.0) != isMuted) {
+      _controller!.setVolume(isMuted ? 0.0 : 1.0);
+    }
+
     if (_hasError) {
       return Container(
         color: Colors.black,
