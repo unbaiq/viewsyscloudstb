@@ -72,7 +72,7 @@ class HeartbeatService {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return null;
-
+  
       var status = await Permission.location.status;
       if (status.isDenied) {
         status = await Permission.location.request();

@@ -9,7 +9,7 @@ import '../providers/player_provider.dart';
 import '../models/media_item.dart';
 import '../models/ticker_item.dart';
 import 'screenshot_service.dart';
-
+import 'package:restart_app/restart_app.dart';
 class SyncService {
   static final SyncService instance = SyncService._init();
   SyncService._init();
@@ -139,6 +139,12 @@ class SyncService {
 
           final currentRefAfterFetch = _ref;
           if (currentRefAfterFetch == null || !currentRefAfterFetch.context.mounted) return;
+
+          if (restartFlag) {
+            print('[SyncService] Received restart flag from CMS. Rebooting application...');
+            Restart.restartApp();
+            return;
+          }
 
           // Update orientation layout parameters dynamically
           if (orientation != null && orientation.isNotEmpty) {

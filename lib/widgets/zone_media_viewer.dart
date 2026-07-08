@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
+// NativeVideoPlayer removed as VideoPlayerWidget now exclusively wraps it
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -97,6 +98,7 @@ class _ZoneMediaViewerState extends ConsumerState<ZoneMediaViewer> {
   Widget _buildMediaView(MediaItem item, int totalItems) {
     if (item.type == 'video') {
       _imageTimer?.cancel();
+
       return VideoPlayerWidget(
         key: ValueKey('zone_video_${item.id}_${item.localPath ?? item.url}'),
         item: item,
@@ -125,7 +127,7 @@ class _ZoneMediaViewerState extends ConsumerState<ZoneMediaViewer> {
     if (!fileExists) {
       return Image.network(
         item.url,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) =>
@@ -135,7 +137,7 @@ class _ZoneMediaViewerState extends ConsumerState<ZoneMediaViewer> {
 
     return Image.file(
       File(item.localPath!),
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
       width: double.infinity,
       height: double.infinity,
       errorBuilder: (context, error, stackTrace) =>

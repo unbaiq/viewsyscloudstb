@@ -16,12 +16,14 @@ class ActivationScreen extends ConsumerStatefulWidget {
   ConsumerState<ActivationScreen> createState() => _ActivationScreenState();
 }
 
-class _ActivationScreenState extends ConsumerState<ActivationScreen> with SingleTickerProviderStateMixin {
-  String _activationCode = '------';
+class _ActivationScreenState extends ConsumerState<ActivationScreen>
+    with SingleTickerProviderStateMixin {
+  String _activationCode = '----------------';
   Timer? _checkerTimer;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   bool _isActivating = false;
+  bool _isTempScreenRegistered = false;
 
   @override
   void initState() {
@@ -34,10 +36,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
     )..repeat(reverse: true);
 
     _pulseAnimation = Tween<double>(begin: 4.0, end: 16.0).animate(
-      CurvedAnimation(
-        parent: _pulseController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
 
@@ -66,13 +65,14 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
   Future<void> _generateNewCode() async {
     final prefs = await SharedPreferences.getInstance();
     final code = UidGenerator.generateUid();
-    
+
     await prefs.setString('activation_code', code);
     await prefs.setBool('is_activated', false);
 
     if (mounted) {
       setState(() {
         _activationCode = code;
+        _isTempScreenRegistered = false; // Reset temp registration for new code
       });
       _checkerTimer?.cancel();
       _startActivationChecker();
@@ -95,6 +95,34 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
     String layout = 'fullscreen';
 
     try {
+      // Ping the screen-temp API to register/update the temporary screen on the server
+      if (!_isTempScreenRegistered) {
+        try {
+          final tempUrl = Uri.parse(
+            'https://viewsys.co.in/api/player/screen-temp',
+          );
+          final tempRes = await http.post(
+            tempUrl,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'screen_no': int.tryParse(_activationCode) ?? _activationCode,
+            }),
+          );
+          if (tempRes.statusCode == 200 || tempRes.statusCode == 201) {
+            final data = jsonDecode(tempRes.body);
+            if (data is Map && data['success'] == true) {
+              _isTempScreenRegistered = true;
+              debugPrint('Temporary screen registered successfully.');
+            }
+          }
+        } catch (e) {
+          debugPrint('CMS API screen-temp error: $e');
+        }
+      }
+
       final url = Uri.parse('https://viewsys.co.in/api/player/login');
       final response = await http.post(
         url,
@@ -105,7 +133,9 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
         body: jsonEncode({'device_id': _activationCode}),
       );
 
-      debugPrint('CMS API check for $_activationCode: Status ${response.statusCode}, Body: ${response.body}');
+      debugPrint(
+        'CMS API check for $_activationCode: Status ${response.statusCode}, Body: ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -116,9 +146,14 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
           orientation = data['orientation']?.toString() ?? 'landscape';
           syncInterval = data['sync_interval']?.toString() ?? '3';
 
-          layout = data['layout_type']?.toString() ?? data['layout']?.toString() ?? 'fullscreen';
+          layout =
+              data['layout_type']?.toString() ??
+              data['layout']?.toString() ??
+              'fullscreen';
           layout = layout.trim().toLowerCase();
-          if (layout != 'ticker' && layout != 'header' && layout != 'half_split') {
+          if (layout != 'ticker' &&
+              layout != 'header' &&
+              layout != 'half_split') {
             layout = 'fullscreen';
           }
           final prefs = await SharedPreferences.getInstance();
@@ -136,13 +171,15 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
       _checkerTimer?.cancel();
       _checkerTimer = null;
 
-      await ref.read(activationProvider.notifier).activateDevice(
-        screenId: screenId,
-        companyId: companyId,
-        orientation: orientation,
-        syncInterval: int.tryParse(syncInterval) ?? 3,
-        layout: layout,
-      );
+      await ref
+          .read(activationProvider.notifier)
+          .activateDevice(
+            screenId: screenId,
+            companyId: companyId,
+            orientation: orientation,
+            syncInterval: int.tryParse(syncInterval) ?? 3,
+            layout: layout,
+          );
 
       _navigateToDashboard();
       return;
@@ -164,17 +201,22 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
       final cId = prefs.getString('company_id') ?? '1';
       final orient = prefs.getString('orientation') ?? 'landscape';
       final syncInt = prefs.getString('sync_interval') ?? '3';
-      
-      await ref.read(activationProvider.notifier).activateDevice(
-        screenId: sId,
-        companyId: cId,
-        orientation: orient,
-        syncInterval: int.tryParse(syncInt) ?? 3,
-      );
+
+      await ref
+          .read(activationProvider.notifier)
+          .activateDevice(
+            screenId: sId,
+            companyId: cId,
+            orientation: orient,
+            syncInterval: int.tryParse(syncInt) ?? 3,
+          );
       _navigateToDashboard();
     } else {
       // Polling: call recursively after 2 seconds
-      _checkerTimer = Timer(const Duration(seconds: 2), _checkActivationRecursive);
+      _checkerTimer = Timer(
+        const Duration(seconds: 2),
+        _checkActivationRecursive,
+      );
     }
   }
 
@@ -224,9 +266,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
         behavior: SnackBarBehavior.floating,
         backgroundColor: const Color(0xFF1E293B),
         duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -276,10 +316,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                 const SizedBox(height: 8),
                 Text(
                   'Pairing this screen with your merchant account.',
-                  style: TextStyle(
-                    color: Colors.grey.shade400,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -303,14 +340,16 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
 
       if (!mounted) return;
       Navigator.of(context).pop(); // pop dialogue
-      
-      await ref.read(activationProvider.notifier).activateDevice(
-        screenId: '5',
-        companyId: '1',
-        orientation: 'landscape',
-        syncInterval: 10,
-        layout: 'fullscreen',
-      );
+
+      await ref
+          .read(activationProvider.notifier)
+          .activateDevice(
+            screenId: '5',
+            companyId: '1',
+            orientation: 'landscape',
+            syncInterval: 10,
+            layout: 'fullscreen',
+          );
       _navigateToDashboard();
     });
   }
@@ -318,27 +357,20 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Dark slate blue
+      backgroundColor: Colors.black,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0F172A), // Deep Slate
-              Color(0xFF1E293B), // Medium Slate
-              Color(0xFF0F172A), // Deep Slate
-            ],
-          ),
-        ),
+        color: Colors.black,
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
               return Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
-                  child: SizedBox(
-                    width: 600,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 32,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -379,7 +411,9 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.03),
                             borderRadius: BorderRadius.circular(24),
-                            border: Border.all(color: Colors.white.withOpacity(0.06)),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.06),
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,12 +421,16 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                               _buildStepRow(
                                 stepNumber: '1',
                                 instruction: 'Go to ',
-                                highlight: 'thelocals.com/activate',
-                                instructionSuffix: ' on your phone or computer.',
+                                highlight: 'viewsys.co.in',
+                                instructionSuffix:
+                                    ' on your phone or computer.',
                               ),
                               const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 12),
-                                child: Divider(color: Colors.white10, height: 1),
+                                child: Divider(
+                                  color: Colors.white10,
+                                  height: 1,
+                                ),
                               ),
                               _buildStepRow(
                                 stepNumber: '2',
@@ -402,17 +440,24 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                               ),
                               const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 12),
-                                child: Divider(color: Colors.white10, height: 1),
+                                child: Divider(
+                                  color: Colors.white10,
+                                  height: 1,
+                                ),
                               ),
                               _buildStepRow(
                                 stepNumber: '3',
-                                instruction: 'Enter the 6-digit code shown below.',
+                                instruction:
+                                    'Enter the 16-digit code shown below.',
                                 highlight: '',
                                 instructionSuffix: '',
                               ),
                               const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 12),
-                                child: Divider(color: Colors.white10, height: 1),
+                                child: Divider(
+                                  color: Colors.white10,
+                                  height: 1,
+                                ),
                               ),
                               _buildStepRow(
                                 stepNumber: '4',
@@ -422,7 +467,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                               ),
                               const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 12),
-                                child: Divider(color: Colors.white10, height: 1),
+                                child: Divider(
+                                  color: Colors.white10,
+                                  height: 1,
+                                ),
                               ),
                               _buildStepRow(
                                 stepNumber: '5',
@@ -432,7 +480,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                               ),
                               const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 12),
-                                child: Divider(color: Colors.white10, height: 1),
+                                child: Divider(
+                                  color: Colors.white10,
+                                  height: 1,
+                                ),
                               ),
                               _buildStepRow(
                                 stepNumber: '6',
@@ -440,7 +491,6 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                                 highlight: 'schedule',
                                 instructionSuffix: '.',
                               ),
-
                             ],
                           ),
                         ),
@@ -465,37 +515,46 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                             );
                           },
                           child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: Colors.blueAccent.withOpacity(0.3),
-                    width: 1.5,
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Code display
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildCodeGroup(_activationCode.substring(0, 3)),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade500,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildCodeGroup(_activationCode.substring(3, 6)),
-                      ],
-                    ),            
-                                
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 20,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.blueAccent.withOpacity(0.3),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Code display
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      _buildCodeGroup(
+                                        _activationCode.substring(0, 4),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildCodeGroup(
+                                        _activationCode.substring(4, 8),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildCodeGroup(
+                                        _activationCode.substring(8, 12),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildCodeGroup(
+                                        _activationCode.substring(12, 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
                                 const SizedBox(height: 20),
 
                                 // Status indicator (recursive checking indicator)
@@ -507,7 +566,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                                       height: 12,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.blueAccent,
+                                            ),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
@@ -525,7 +587,6 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> with Single
                             ),
                           ),
                         ),
-
                       ],
                     ),
                   ),

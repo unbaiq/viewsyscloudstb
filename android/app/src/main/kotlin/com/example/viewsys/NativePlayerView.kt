@@ -10,10 +10,18 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+import java.io.File
 
 @OptIn(UnstableApi::class)
 class NativePlayerView(
@@ -22,6 +30,21 @@ class NativePlayerView(
     messenger: BinaryMessenger,
     creationParams: Map<String, Any>?
 ) : PlatformView, MethodChannel.MethodCallHandler {
+
+    companion object {
+        private var cache: SimpleCache? = null
+
+        @Synchronized
+        fun getCache(context: Context): SimpleCache {
+            if (cache == null) {
+                val cacheDir = File(context.cacheDir, "exo_video_cache")
+                val evictor = LeastRecentlyUsedCacheEvictor(500 * 1024 * 1024L) // 500MB
+                val databaseProvider = StandaloneDatabaseProvider(context)
+                cache = SimpleCache(cacheDir, evictor, databaseProvider)
+            }
+            return cache!!
+        }
+    }
 
     // ── UI ────────────────────────────────────────────────────────────
     private val container: FrameLayout = FrameLayout(context)
@@ -37,6 +60,7 @@ class NativePlayerView(
     init {
         // Hide player controller UI (pure video, no play/pause buttons)
         playerView.useController = false
+        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         playerView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -115,8 +139,17 @@ class NativePlayerView(
         exoPlayer = ExoPlayer.Builder(context).build().also { player ->
             playerView.player = player
 
-            val mediaItem = MediaItem.fromUri(Uri.parse(url))
-            player.setMediaItem(mediaItem)
+            val uri = Uri.parse(url)
+            val defaultDataSourceFactory = DefaultDataSource.Factory(context)
+            val cacheDataSourceFactory = CacheDataSource.Factory()
+                .setCache(getCache(context))
+                .setUpstreamDataSourceFactory(defaultDataSourceFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+            val mediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(uri))
+
+            player.setMediaSource(mediaSource)
 
             player.repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             player.volume = volume

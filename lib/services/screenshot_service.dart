@@ -12,13 +12,19 @@ class ScreenshotService {
   /// Captures the current player screen repaint boundary and sends PNG bytes to `/screenshot`.
   static Future<void> captureAndUpload(String screenId) async {
     try {
+      await Future.delayed(const Duration(milliseconds: 500));
       final Uint8List? baseImageBytes = await screenshotController.capture(pixelRatio: 1.0);
       if (baseImageBytes == null) {
         print('Screenshot capture failed: baseImageBytes is null.');
         return;
       }
 
-      final Map<int, ui.Image> videoFrames = await VideoFrameRegistry.instance.captureAllFrames();
+      Map<int, ui.Image> videoFrames = {};
+      try {
+        videoFrames = await VideoFrameRegistry.instance.captureAllFrames();
+      } catch (e) {
+        print('Error capturing video frames: $e');
+      }
 
       if (videoFrames.isEmpty) {
         await _upload(screenId, baseImageBytes);
@@ -62,19 +68,24 @@ class ScreenshotService {
         }
       }
 
-      final ui.Picture picture = recorder.endRecording();
-      final ui.Image compositeImage = await picture.toImage(baseImage.width, baseImage.height);
-      final ByteData? byteData = await compositeImage.toByteData(format: ui.ImageByteFormat.png);
-      baseImage.dispose();
-      compositeImage.dispose();
+      try {
+        final ui.Picture picture = recorder.endRecording();
+        final ui.Image compositeImage = await picture.toImage(baseImage.width, baseImage.height);
+        final ByteData? byteData = await compositeImage.toByteData(format: ui.ImageByteFormat.png);
+        baseImage.dispose();
+        compositeImage.dispose();
 
-      if (byteData != null) {
-        await _upload(screenId, byteData.buffer.asUint8List());
-      } else {
+        if (byteData != null) {
+          await _upload(screenId, byteData.buffer.asUint8List());
+        } else {
+          await _upload(screenId, baseImageBytes);
+        }
+      } catch (e) {
+        print('Compositing failed: $e');
         await _upload(screenId, baseImageBytes);
       }
     } catch (e) {
-      print('Screenshot capture composite error: $e');
+      print('Screenshot capture exception: $e');
     }
   }
 

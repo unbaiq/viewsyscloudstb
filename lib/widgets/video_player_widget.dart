@@ -1,17 +1,11 @@
-import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_player/video_player.dart';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:flutter/rendering.dart';
-
 
 import '../models/media_item.dart';
 import '../providers/player_provider.dart';
-import '../services/video_preload_manager.dart';
+import 'native_video_player.dart';
 
 /// Tracks the number of actively rendering video widgets on screen
 class ActiveVideoCountNotifier extends Notifier<int> {
@@ -27,7 +21,7 @@ final activeVideoCountProvider =
       return ActiveVideoCountNotifier();
     });
 
-/// A wrapper widget to manage the lifecycle of a video controller safely.
+/// A wrapper widget to manage the lifecycle of a native video controller safely.
 class VideoPlayerWidget extends ConsumerStatefulWidget {
   final MediaItem item;
   final VoidCallback onComplete;
@@ -47,11 +41,6 @@ class VideoPlayerWidget extends ConsumerStatefulWidget {
 }
 
 class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
-  final GlobalKey _repaintKey = GlobalKey();
-  VideoPlayerController? _controller;
-  bool _initialized = false;
-  bool _hasError = false;
-  Timer? _fallbackTimer;
   bool _notifiedReady = false;
 
   @override
@@ -62,18 +51,6 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
         ref.read(activeVideoCountProvider.notifier).increment();
       }
     });
-    VideoFrameRegistry.instance.register(widget.item.id, _repaintKey);
-    _initVideo();
-  }
-
-  @override
-  void didUpdateWidget(VideoPlayerWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.id != widget.item.id) {
-      VideoFrameRegistry.instance.unregister(oldWidget.item.id);
-      VideoFrameRegistry.instance.register(widget.item.id, _repaintKey);
-    }
-    _updateLoopingState();
   }
 
   @override
@@ -83,284 +60,69 @@ class _VideoPlayerWidgetState extends ConsumerState<VideoPlayerWidget> {
         ref.read(activeVideoCountProvider.notifier).decrement();
       } catch (_) {}
     });
-    _fallbackTimer?.cancel();
-    VideoFrameRegistry.instance.unregister(widget.item.id);
-    _controller?.removeListener(_videoListener);
-    _controller?.dispose();
     super.dispose();
   }
 
-  void _updateLoopingState() {
-    if (_controller == null || !_initialized) return;
-
-    if (widget.forceLoop) {
-      if (!_controller!.value.isLooping) {
-        _controller!.setLooping(true);
-        print(
-          '[VideoPlayerWidget] Dynamic looping updated to: true (forceLoop)',
-        );
-      }
-      return;
-    }
-
+  bool _shouldLoop() {
+    if (widget.forceLoop) return true;
     final playlistState = ref.read(playlistProvider);
     final items = playlistState.items;
     final now = DateTime.now();
     final validCount = items
         .where((item) => item.isValidNow(now, isOnline: playlistState.isOnline))
         .length;
-    final shouldLoop = validCount <= 1;
-    if (_controller!.value.isLooping != shouldLoop) {
-      _controller!.setLooping(shouldLoop);
-      print('[VideoPlayerWidget] Dynamic looping updated to: $shouldLoop');
-    }
-  }
-
-  Future<void> _initVideo() async {
-    try {
-      final preloaded = VideoPreloadManager.instance.getAndRemove(
-        widget.item.id,
-      );
-
-      if (preloaded != null) {
-        _controller = preloaded;
-        _controller!.addListener(_videoListener);
-
-        if (mounted) {
-          setState(() {
-            _initialized = _controller!.value.isInitialized;
-          });
-
-          if (!_controller!.value.isInitialized) {
-            await _controller!.initialize();
-            if (mounted) {
-              setState(() {
-                _initialized = true;
-              });
-            }
-          }
-
-          _updateLoopingState();
-          _controller!.play();
-        }
-      } else {
-        final fileExists =
-            widget.item.localPath != null &&
-            widget.item.localPath!.isNotEmpty &&
-            !kIsWeb &&
-            File(widget.item.localPath!).existsSync() &&
-            File(widget.item.localPath!).lengthSync() > 0;
-
-        final playlistState = ref.read(playlistProvider);
-
-        if (!fileExists && !kIsWeb) {
-          if (!playlistState.isOnline) {
-            if (mounted) {
-              setState(() {
-                _hasError = true;
-              });
-            }
-            return;
-          }
-
-          print(
-            '[VideoPlayerWidget] File not cached yet. Streaming from network: ${widget.item.url}',
-          );
-          _controller = VideoPlayerController.networkUrl(
-            Uri.parse(widget.item.url),
-            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-          );
-        } else {
-          if (kIsWeb) {
-            _controller = VideoPlayerController.networkUrl(
-              Uri.parse(widget.item.url),
-              videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-            );
-          } else {
-            _controller = VideoPlayerController.file(
-              File(widget.item.localPath!),
-              videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-            );
-          }
-        }
-
-        _controller!.addListener(_videoListener);
-        await _controller!.initialize().timeout(const Duration(seconds: 15));
-
-        if (mounted) {
-          setState(() {
-            _initialized = true;
-          });
-
-          _updateLoopingState();
-
-          final layout = ref.read(activationProvider).layout;
-          final singleZoneLayouts = const ['fullscreen', 'ticker', 'header'];
-          final currentActive = ref.read(activeVideoCountProvider);
-          final shouldMute = singleZoneLayouts.contains(layout) ? false : currentActive > 1;
-          _controller!.setVolume(shouldMute ? 0.0 : 1.0);
-
-          _controller!.play();
-        }
-      }
-    } catch (e) {
-      print('Video controller initialization failure: $e');
-      final playlistState = ref.read(playlistProvider);
-      if (playlistState.items.any((item) => item.id == widget.item.id)) {
-        ref.read(playlistProvider.notifier).handleCorruptVideo(widget.item.id);
-      }
-
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-        });
-        // Sched fallback to automatically advance in 4 seconds if initialization fails
-        _fallbackTimer = Timer(const Duration(seconds: 4), () {
-          widget.onComplete();
-        });
-      }
-    }
-  }
-
-  void _videoListener() {
-    if (_controller == null || !mounted) return;
-
-    if (_controller!.value.hasError) {
-      print('Video playback error: ${_controller!.value.errorDescription}');
-      final playlistState = ref.read(playlistProvider);
-      if (playlistState.items.any((item) => item.id == widget.item.id)) {
-        ref.read(playlistProvider.notifier).handleCorruptVideo(widget.item.id);
-      }
-
-      _controller!.removeListener(_videoListener);
-      widget.onComplete();
-      return;
-    }
-
-    // Trigger parent ready callback only after video starts rendering/playing frames
-    if (!_notifiedReady &&
-        _controller!.value.isInitialized &&
-        _controller!.value.isPlaying &&
-        _controller!.value.position.inMilliseconds > 0) {
-      _notifiedReady = true;
-      widget.onInitialized?.call();
-    }
-
-    // Advance index once video playout finishes (only if it is not looping)
-    if (!_controller!.value.isLooping &&
-        _controller!.value.isInitialized &&
-        _controller!.value.isCompleted) {
-      _controller!.removeListener(_videoListener);
-      widget.onComplete();
-    }
+    return validCount <= 1;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic audio muting: if more than 1 video is rendering, mute all.
-    ref.listen<int>(activeVideoCountProvider, (previous, next) {
-      if (_controller != null && _controller!.value.isInitialized) {
-        final layout = ref.read(activationProvider).layout;
-        final singleZoneLayouts = const ['fullscreen', 'ticker', 'header'];
-        final shouldMute = singleZoneLayouts.contains(layout) ? false : next > 1;
-        if ((_controller!.value.volume == 0.0) != shouldMute) {
-          _controller!.setVolume(shouldMute ? 0.0 : 1.0);
-          print(
-            '[VideoPlayerWidget] Mute state updated: $shouldMute (Active videos: $next)',
-          );
-        }
-      }
-    });
-
     final activeVideoCount = ref.watch(activeVideoCountProvider);
     final layout = ref.watch(activationProvider).layout;
     final singleZoneLayouts = const ['fullscreen', 'ticker', 'header'];
     final isMuted = singleZoneLayouts.contains(layout) ? false : activeVideoCount > 1;
 
-    if (_controller != null &&
-        _controller!.value.isInitialized &&
-        (_controller!.value.volume == 0.0) != isMuted) {
-      _controller!.setVolume(isMuted ? 0.0 : 1.0);
-    }
+    final fileExists = widget.item.localPath != null &&
+        widget.item.localPath!.isNotEmpty &&
+        File(widget.item.localPath!).existsSync() &&
+        File(widget.item.localPath!).lengthSync() > 0;
 
-    if (_hasError) {
-      return Container(
-        color: Colors.black,
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.videocam_off_rounded,
-                color: Colors.redAccent,
-                size: 40,
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Video playout failed',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (!_initialized) {
-      return const SizedBox.shrink();
-    }
-
-    // FittedBox correctly fills any rotated space while preserving aspect ratio.
-    // LayoutBuilder forces the widget tree to respond live to constraints/orientation changes.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: SizedBox(
-              width: _controller!.value.size.width,
-              height: _controller!.value.size.height,
-              child: RepaintBoundary(
-                key: _repaintKey,
-                child: VideoPlayer(_controller!),
-              ),
-            ),
-          ),
-        );
+    return NativeVideoPlayer(
+      key: ValueKey('native_${widget.item.id}'),
+      url: fileExists ? widget.item.localPath! : widget.item.url,
+      loop: _shouldLoop(),
+      muted: isMuted,
+      volume: 1.0,
+      onReady: () {
+        if (!_notifiedReady) {
+          widget.onInitialized?.call();
+          _notifiedReady = true;
+        }
+      },
+      onComplete: () {
+        widget.onComplete();
+      },
+      onError: (error) {
+        print('Native player error: $error');
+        final playlistState = ref.read(playlistProvider);
+        if (playlistState.items.any((item) => item.id == widget.item.id)) {
+          ref.read(playlistProvider.notifier).handleCorruptVideo(widget.item.id);
+        }
+        widget.onComplete();
       },
     );
   }
 }
 
+// Kept empty to satisfy screenshot_service.dart dependencies without breaking it
 class VideoFrameRegistry {
   VideoFrameRegistry._();
   static final VideoFrameRegistry instance = VideoFrameRegistry._();
   
-  final Map<int, GlobalKey> _keys = {};
-  
-  void register(int itemId, GlobalKey key) {
-    _keys[itemId] = key;
-  }
-  
-  void unregister(int itemId) {
-    _keys.remove(itemId);
-  }
-  
-  GlobalKey? keyFor(int itemId) => _keys[itemId];
+  void register(int itemId, GlobalKey key) {}
+  void unregister(int itemId) {}
+  GlobalKey? keyFor(int itemId) => null;
   
   Future<Map<int, ui.Image>> captureAllFrames() async {
-    final Map<int, ui.Image> frames = {};
-    for (final entry in _keys.entries) {
-      try {
-        final boundary = entry.value.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-        if (boundary != null) {
-          final image = await boundary.toImage(pixelRatio: 1.0);
-          frames[entry.key] = image;
-        }
-      } catch (e) {
-        print('Error capturing video frame for ${entry.key}: $e');
-      }
-    }
-    return frames;
+    return {};
   }
 }

@@ -67,6 +67,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String _formatDeviceCode(String? code) {
     if (code == null || code.length < 6) return 'Not Linked';
+    if (code.length == 16) return code;
     return '${code.substring(0, 3)}-${code.substring(3, 6)}';
   }
 

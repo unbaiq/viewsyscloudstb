@@ -114,15 +114,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 1.3,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Colors.white,
-              Color(0xFFFBFBFC),
-              Color(0xFFF5F7FA),
+              Color(0xFFC7578F),
+              Color(0xFF63AACD),
+              Color(0xFFD22D22),
             ],
-            stops: [0.0, 0.6, 1.0],
           ),
         ),
         child: SafeArea(
@@ -144,57 +143,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       ),
                     );
                   },
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Logo container with a premium subtle shadow and rounded corners
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 24,
-                              offset: const Offset(0, 8),
-                            ),
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.02),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          width: 280,
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                      const SizedBox(height: 36),
-                      // Tagline or app title text
-                      const Text(
-                        'THE LOCADS',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 4.0,
-                          color: Color(0xFF2C3E50),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Window to Local Market',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 1.5,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: const SizedBox.shrink(),
                 ),
               ),
               // Loader / Progress Indicator at the bottom
@@ -225,18 +174,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(2),
                             child: LinearProgressIndicator(
-                              color: Colors.blue.shade600,
-                              backgroundColor: Colors.blue.shade100,
+                              color: Colors.white,
+                              backgroundColor: Colors.white24,
                             ),
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Text(
+                        const Text(
                           'Loading local experiences...',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w400,
-                            color: Colors.grey.shade500,
+                            color: Colors.white70,
                             letterSpacing: 0.5,
                           ),
                         ),

@@ -88,7 +88,7 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
       : super(const ActivationState(
           isActivated: false,
           isLoading: true,
-          deviceCode: '------',
+          deviceCode: '----------------',
           screenId: '',
           companyId: '',
           orientation: 'landscape',
@@ -116,7 +116,7 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
   Future<void> loadActivationFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final isActivated = prefs.getBool('is_activated') ?? false;
-    final deviceCode = prefs.getString('activation_code') ?? '------';
+    final deviceCode = prefs.getString('activation_code') ?? '----------------';
     final screenId = prefs.getString('screen_id') ?? '';
     final companyId = prefs.getString('company_id') ?? '';
     final orientation = prefs.getString('orientation') ?? 'landscape';
@@ -131,7 +131,7 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
     final bottomRightUrl = prefs.getString('bottom_right_url');
 
     state = ActivationState(
-      isActivated: isActivated && deviceCode != '------' && screenId.isNotEmpty,
+      isActivated: isActivated && deviceCode != '----------------' && screenId.isNotEmpty,
       isLoading: false,
       deviceCode: deviceCode,
       screenId: screenId,
@@ -237,7 +237,7 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
 
   /// Refreshes the activation details from the server using the saved device/pairing code.
   Future<bool> refreshActivationDetails() async {
-    if (state.deviceCode == '------' || state.deviceCode.isEmpty) return false;
+    if (state.deviceCode == '----------------' || state.deviceCode.isEmpty) return false;
     if (kIsWeb) return true;
     if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       return true;
@@ -333,7 +333,7 @@ class ActivationNotifier extends StateNotifier<ActivationState> {
 
     state = ActivationState(
       isActivated: false,
-      deviceCode: '------',
+      deviceCode: '----------------',
       screenId: '',
       companyId: '',
       orientation: 'landscape',

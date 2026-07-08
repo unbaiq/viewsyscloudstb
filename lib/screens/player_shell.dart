@@ -165,9 +165,12 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
           );
         }
       });
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: Colors.black,
-        body: SizedBox.shrink(),
+        body: Container(
+          color: Colors.black,
+          child: const SizedBox.shrink(),
+        ),
       );
     }
 
@@ -353,7 +356,10 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
               right: 0,
               child: Scaffold(
                 backgroundColor: Colors.black,
-                body: finalBody,
+                body: Container(
+                  color: Colors.black,
+                  child: finalBody,
+                ),
               ),
             ),
           if (isHeaderLayout)
@@ -447,17 +453,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
 
   Widget _buildPremiumLoadingView() {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1E293B),
-            Color(0xFF0F172A),
-          ],
-        ),
-      ),
+      color: Colors.black,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -510,14 +506,16 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     final uid = actState.deviceCode.isNotEmpty && actState.deviceCode != '------' ? actState.deviceCode : actState.screenId;
     
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         title: Image.asset('assets/images/logo.png', height: 36, errorBuilder: (c,e,s) => const Icon(Icons.monitor, color: Colors.amberAccent)),
       ),
-      body: SafeArea(
+      body: Container(
+        color: Colors.black,
+        child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: LayoutBuilder(
@@ -627,7 +625,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
           ),
         ),
       ),
-    );
+    ),);
   }
 
   Widget _buildSetupTimeline() {
@@ -753,7 +751,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     if (!fileExists) {
       return Image.network(
         item.url,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
@@ -769,7 +767,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
 
     return Image.file(
       File(item.localPath!),
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
       width: double.infinity,
       height: double.infinity,
       frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {

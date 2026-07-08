@@ -82,8 +82,8 @@ class _TickerBarState extends State<TickerBar> with TickerProviderStateMixin {
     if (widget.items.isEmpty) return;
 
     final totalText = widget.items.map((item) => item.text).join('   •••   ');
-    // Slowed down scroll speed: 120ms per character instead of 50ms for readability.
-    final durationMs = (totalText.length * 120).clamp(5000, 1000000);
+    // Slowed down scroll speed: 250ms per character for better readability.
+    final durationMs = (totalText.length * 250).clamp(5000, 1000000);
     
     _animationController = AnimationController(
       vsync: this,
@@ -111,8 +111,8 @@ class _TickerBarState extends State<TickerBar> with TickerProviderStateMixin {
     final List<Widget> segments = [];
     for (int i = 0; i < widget.items.length; i++) {
       final item = widget.items[i];
-      final bg = _parseColor(item.bgColor, const Color.fromARGB(221, 0, 28, 127));
-      final fg = _parseColor(item.textColor, const Color.fromARGB(255, 255, 255, 255));
+      final bg = _parseColor(item.bgColor, Colors.white);
+      final fg = _parseColor(item.textColor, Colors.black);
       segments.add(
         Container(
           color: bg,
@@ -124,6 +124,7 @@ class _TickerBarState extends State<TickerBar> with TickerProviderStateMixin {
               fontWeight: FontWeight.bold,
               fontSize: 16,
               letterSpacing: 1.2,
+              decoration: TextDecoration.none,
             ),
           ),
         ),
@@ -141,6 +142,7 @@ class _TickerBarState extends State<TickerBar> with TickerProviderStateMixin {
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
                 letterSpacing: 1.2,
+                decoration: TextDecoration.none,
               ),
             ),
           ),
